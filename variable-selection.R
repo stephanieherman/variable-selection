@@ -29,7 +29,7 @@ for (i in 2:607)  {
   }
 }
 
-cat("Number of age corrected metabolites: ", length(n))
+cat("Number of age corrected metabolites: ", n, "\n")
 rm(metabolites)
 metabolites <- metabolites_corr
 
@@ -72,7 +72,7 @@ for (i in 3:48)  {
   }
 }
 
-cat("Age corrected CRP variables: ", names(crp)[n])
+cat("Age corrected CRP variables: ", names(crp)[n], "\n")
 rm(crp)
 crp <- crp_corr[,!(names(crp_corr) %in% c("Age"))]
 
