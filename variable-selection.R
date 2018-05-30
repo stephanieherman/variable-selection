@@ -4,13 +4,13 @@ library(doParallel)
 library(ropls)
 setwd("~\\Projects\\MS\\data\\final analysis\\doParallelCV")
 
-# Load data
+# load data
 load("metaboliteData.rdata")
 load("crpData.rdata")
 
 # ----------------------------------- Fix metabolites -----------------------------------
 
-# Correct for age
+# correct for age
 ind <- which(crp$Type=="SPMS")
 
 metabolites_corr <- data.frame(matrix(NA,nrow=(nrow(metabolites)),ncol=ncol(metabolites)))
@@ -52,7 +52,7 @@ metabolites <- metabolites[,c("group",order)]
 
 # ----------------------------------- Fix CRP -----------------------------------
 
-# Correct for age
+# correct for age
 crp_corr <- data.frame(matrix(NA,nrow=(nrow(crp)),ncol=ncol(crp)))
 names(crp_corr)<-names(crp)
 row.names(crp_corr)<-row.names(crp)
@@ -97,7 +97,7 @@ crp <- crp[,c("group",names)]
 # ----------------------------------- Cross validation -----------------------------------
 
 # define CV blocks
-kontroll <- c(1,1,2,2,3,3,4,4,5,5)
+control <- c(1,1,2,2,3,3,4,4,5,5)
 RRMS <- c(rep(1,6),rep(2,5),rep(3,5),rep(4,5),rep(5,5))
 SPMS <- c(rep(1,3),rep(2,3),rep(3,3),rep(4,3),rep(5,4))
 
@@ -118,7 +118,7 @@ ERmatrix <- foreach(j=1:CV, .combine=cbind, .packages = "ropls", .verbose = T) %
     return(er)
   }
   
-  newgroups <- c(sample(kontroll),sample(RRMS),sample(SPMS))
+  newgroups <- c(sample(control),sample(RRMS),sample(SPMS))
   metabolites$group <- newgroups
   crp$group <- newgroups
   
@@ -129,19 +129,19 @@ ERmatrix <- foreach(j=1:CV, .combine=cbind, .packages = "ropls", .verbose = T) %
     # partition the data into training and testing set
     Metabo_test <- metabolites[which(metabolites$group==i),]
     CRP_test <- crp[which(crp$group==i),]
-    test <- cbind(Metabo_test[,-1],CRP_test[,-c(1,2)])
-    
-    names(test) <- gsub("X","",names(test))
+
     Metabo_train <- metabolites[-which(metabolites$group==i),]
     CRP_train <- crp[-which(crp$group==i),]
     
     train <- cbind(Metabo_train[,-1],CRP_train[,-c(1,2)])
+    test <- cbind(Metabo_test[,-1],CRP_test[,-c(1,2)])
+    
+    names(test) <- gsub("X","",names(test))
     
     # ----------------- Metabolomics models -----------------
     
     ## All vs All
     # build metabolomics model - all vs all
-
     data.plsda <- opls(Metabo_train[,-c(1,2)], Metabo_train$Type, printL=FALSE,
                        predI = 2, scaleC='standard', plotL=FALSE)
     
@@ -153,7 +153,7 @@ ERmatrix <- foreach(j=1:CV, .combine=cbind, .packages = "ropls", .verbose = T) %
     # calculate error rates
     SP.er <- calcER("SPMS",Metabo_test$Type,prediction)
     RR.er <- calcER("RRMS",Metabo_test$Type,prediction)
-    con.er <- calcER("kontroll",Metabo_test$Type,prediction)
+    con.er <- calcER("control",Metabo_test$Type,prediction)
     BER <- (SP.er+RR.er+con.er)/3
     
     ER[1,i] <- SP.er                                      ##OUTPUT
@@ -162,12 +162,12 @@ ERmatrix <- foreach(j=1:CV, .combine=cbind, .packages = "ropls", .verbose = T) %
     ## RRMS vs SPMS
     # temporarily remove the control group
     tmp_Metabo_train <- Metabo_train
-    tmp_Metabo_train <- tmp_Metabo_train[-which(tmp_Metabo_train$Type=="kontroll"),]
     tmp_Metabo_test <- Metabo_test
-    tmp_Metabo_test <- tmp_Metabo_test[-which(tmp_Metabo_test$Type=="kontroll"),]
+    
+    tmp_Metabo_train <- tmp_Metabo_train[-which(tmp_Metabo_train$Type=="control"),]
+    tmp_Metabo_test <- tmp_Metabo_test[-which(tmp_Metabo_test$Type=="control"),]
     
     # build metabolomics model - RRMS vs SPMS
-
     data.plsda <- opls(tmp_Metabo_train[,-c(1,2)], tmp_Metabo_train$Type, printL=FALSE,
                        predI = 2, scaleC='standard', plotL=FALSE)
     
@@ -191,10 +191,11 @@ ERmatrix <- foreach(j=1:CV, .combine=cbind, .packages = "ropls", .verbose = T) %
     top_metabo <- intersect(metabo_AvsA,metabo_RvsS) 
     
     if (length(top_metabo)>1)  {
-      # build reduced metabolomics model - all vs all
+      
       Metabo_train <- Metabo_train[,c("Type",top_metabo)]
       Metabo_test <- Metabo_test[,c("Type",top_metabo)]
       
+      # build reduced metabolomics model - all vs all
       data.plsda <- opls(Metabo_train[,-1], Metabo_train$Type, printL=FALSE,
                          predI = 2, scaleC='standard', plotL=FALSE)
       
@@ -204,15 +205,15 @@ ERmatrix <- foreach(j=1:CV, .combine=cbind, .packages = "ropls", .verbose = T) %
       # calculate error rates
       SP.er<- calcER("SPMS",Metabo_test$Type,prediction)
       RR.er<- calcER("RRMS",Metabo_test$Type,prediction)
-      con.er <- calcER("kontroll",Metabo_test$Type, prediction)
+      con.er <- calcER("control",Metabo_test$Type, prediction)
       BER <- (SP.er+RR.er+con.er)/3
       
       ER[5,i] <- SP.er                                      ##OUTPUT
       ER[6,i] <- BER                                        ##OUTPUT
 
       # build reduced metabolomics model - RRMS vs SPMS
-      Metabo_train <- Metabo_train[-which(Metabo_train$Type=="kontroll"),]
-      Metabo_test <- Metabo_test[-which(Metabo_test$Type=="kontroll"),]
+      Metabo_train <- Metabo_train[-which(Metabo_train$Type=="control"),]
+      Metabo_test <- Metabo_test[-which(Metabo_test$Type=="control"),]
       
       data.plsda <- opls(Metabo_train[,-1], Metabo_train$Type, printL=FALSE,
                          predI = 2, scaleC='standard', plotL=FALSE)
@@ -236,7 +237,6 @@ ERmatrix <- foreach(j=1:CV, .combine=cbind, .packages = "ropls", .verbose = T) %
     
     ## All vs All
     # build CRP model - all vs all
-    
     data.plsda <- opls(CRP_train[,-c(1,2)], CRP_train$Type, printL=FALSE,
                        predI = 2, scaleC='standard', plotL=FALSE)
     
@@ -248,7 +248,7 @@ ERmatrix <- foreach(j=1:CV, .combine=cbind, .packages = "ropls", .verbose = T) %
     # calculate error rates
     SP.er<- calcER("SPMS",CRP_test$Type,prediction)
     RR.er<- calcER("RRMS",CRP_test$Type,prediction)
-    con.er <- calcER("kontroll",CRP_test$Type, prediction)
+    con.er <- calcER("control",CRP_test$Type, prediction)
     BER <- (SP.er+RR.er+con.er)/3
     
     ER[9,i] <- SP.er                                      ##OUTPUT
@@ -257,12 +257,12 @@ ERmatrix <- foreach(j=1:CV, .combine=cbind, .packages = "ropls", .verbose = T) %
     ## RRMS vs SPMS
     # temporarily remove the control group
     tmp_CRP_train <- CRP_train
-    tmp_CRP_train <- tmp_CRP_train[-which(tmp_CRP_train$Type=="kontroll"),]
     tmp_CRP_test <- CRP_test
-    tmp_CRP_test <- tmp_CRP_test[-which(tmp_CRP_test$Type=="kontroll"),]
+    
+    tmp_CRP_train <- tmp_CRP_train[-which(tmp_CRP_train$Type=="control"),]
+    tmp_CRP_test <- tmp_CRP_test[-which(tmp_CRP_test$Type=="control"),]
     
     # build CRP model - RRMS vs SPMS
-    
     data.plsda <- opls(tmp_CRP_train[,-c(1,2)], tmp_CRP_train$Type, printL=FALSE,
                        predI = 2, scaleC='standard', plotL=FALSE)
     
@@ -284,10 +284,11 @@ ERmatrix <- foreach(j=1:CV, .combine=cbind, .packages = "ropls", .verbose = T) %
     top_crp <- intersect(crp_AvsA,crp_RvsS)
     
     if (length(top_crp)>1) {
-      # build reduced CRP model - all vs all
+      
       CRP_train <- CRP_train[,c("Type",top_crp)]
       CRP_test <- CRP_test[,c("Type",top_crp)]
       
+      # build reduced CRP model - all vs all
       data.plsda <- opls(CRP_train[,-1], CRP_train$Type, printL=FALSE,
                          predI = 2, scaleC='standard', plotL=FALSE)
       
@@ -297,15 +298,15 @@ ERmatrix <- foreach(j=1:CV, .combine=cbind, .packages = "ropls", .verbose = T) %
       # calculate error rates
       SP.er<- calcER("SPMS",CRP_test$Type,prediction)
       RR.er<- calcER("RRMS",CRP_test$Type,prediction)
-      con.er <- calcER("kontroll",CRP_test$Type, prediction)
+      con.er <- calcER("control",CRP_test$Type, prediction)
       BER <- (SP.er+RR.er+con.er)/3
       
       ER[13,i] <- SP.er                                     ##OUTPUT
       ER[14,i] <- BER                                       ##OUTPUT
       
       # build reduced crp model - RRMS vs SPMS
-      CRP_train <- CRP_train[-which(CRP_train$Type=="kontroll"),]
-      CRP_test <- CRP_test[-which(CRP_test$Type=="kontroll"),]
+      CRP_train <- CRP_train[-which(CRP_train$Type=="control"),]
+      CRP_test <- CRP_test[-which(CRP_test$Type=="control"),]
       
       data.plsda <- opls(CRP_train[,-1], CRP_train$Type, printL=FALSE,
                          predI = 2, scaleC='standard', plotL=FALSE)
@@ -341,7 +342,7 @@ ERmatrix <- foreach(j=1:CV, .combine=cbind, .packages = "ropls", .verbose = T) %
     # calculate error rates
     SP.er<- calcER("SPMS",test$Type,prediction)
     RR.er<- calcER("RRMS",test$Type,prediction)
-    con.er <- calcER("kontroll",test$Type, prediction)
+    con.er <- calcER("control",test$Type, prediction)
     BER <- (SP.er+RR.er+con.er)/3
     
     ER[17,i] <- SP.er                                     ##OUTPUT
@@ -349,8 +350,8 @@ ERmatrix <- foreach(j=1:CV, .combine=cbind, .packages = "ropls", .verbose = T) %
     
     ## RRMS vs SPMS
     # remove control group
-    train <- train[-which(train$Type=="kontroll"),]
-    test <- test[-which(test$Type=="kontroll"),]
+    train <- train[-which(train$Type=="control"),]
+    test <- test[-which(test$Type=="control"),]
     
     # build CRPM model - RRMS vs SPMS
     data.plsda <- opls(train[,-1], train$Type, printL=FALSE,
