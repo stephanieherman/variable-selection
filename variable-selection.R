@@ -2,7 +2,7 @@ rm(list=ls())
 library(foreach)
 library(doParallel)
 library(ropls)
-setwd("~\\Projects\\MS\\data\\final analysis\\doParallelCV")
+setwd("~/Projects/MS/data/doParallelCV")
 
 # load data
 load("metaboliteData.rdata")
