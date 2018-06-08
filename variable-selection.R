@@ -2,13 +2,81 @@ rm(list=ls())
 library(foreach)
 library(doParallel)
 library(ropls)
-setwd("~/Projects/MS/data/doParallelCV")
+mainDir <- "~/Projects/MS/data/"
+setwd(file.path(mainDir,"doParallelCV"))
+neg <- "neg/170206"
+pos <- "pos/170206"
 
 # load data
-load("metaboliteData.rdata")
+load(file.path(file.path(mainDir,neg),"negDF.RData"))
+load(file.path(file.path(mainDir,pos),"posDF.RData"))
 load("crpData.rdata")
 
+
+
+
 # ----------------------------------- Fix metabolites -----------------------------------
+
+# merge positive and negative ion mode data
+row.names(pos.df) <- paste(c(1:nrow(pos.df)),"pos", sep="")
+row.names(neg.df) <- paste(c(1:nrow(neg.df)),"neg", sep="")
+metabolites <- data.frame(rbind(pos.df,neg.df))
+
+# positive
+pos <- as.numeric(gsub("pos","",row.names(metabolites)[grep("pos",row.names(metabolites))]))
+load ("C:\\Users\\stehe524\\Documents\\Projects\\MS\\data\\pos\\170626\\mz_cf.RData")
+load ("C:\\Users\\stehe524\\Documents\\Projects\\MS\\data\\pos\\170626\\rt_cf.RData")
+pos_cf <- data.frame(cbind(mz_cf[pos],rt_cf[pos]))
+rm(mz_cf)
+rm(rt_cf)
+
+# negative
+neg <- as.numeric(gsub("neg","",row.names(metabolites)[grep("neg",row.names(metabolites))]))
+load ("C:\\Users\\stehe524\\Documents\\Projects\\MS\\data\\neg\\170626\\mz_cf.RData")
+load ("C:\\Users\\stehe524\\Documents\\Projects\\MS\\data\\neg\\170626\\rt_cf.RData")
+neg_cf <- data.frame(cbind(mz_cf[neg],rt_cf[neg]))
+
+metabolites <- cbind(rbind(pos_cf,neg_cf),metabolites)
+names(metabolites)[c(1,2)] <- c("mz","rt")
+
+# match in silico fragmented IDs
+ppmCal<-function(run,ppm) {
+  return((run*ppm)/1000000)
+}
+
+IDs_pos <- read.csv("~/Projects/MS/data/MS2/Galaxy79-[metfrag_identification_results]_pos.csv")
+IDs_neg <- read.csv("~/Projects/MS/data/MS2/Galaxy192-[metfrag_identification_results]_neg.csv")
+
+identified <- c()
+allinfo <- data.frame(matrix(NA,nrow=1,ncol=ncol(IDs_neg)))
+names(allinfo) <- names(IDs_neg)
+for (i in 1:nrow(metabolites)) {
+  mz <- metabolites[i,1]
+  rt <- metabolites[i,2]
+  if (grepl("pos",row.names(metabolites)[i])) {
+    ind_mz <- which(IDs_pos$parentMZ>mz-ppmCal(mz,10) & IDs_pos$parentMZ<mz+ppmCal(mz,10))
+    ind_rt <- which(IDs_pos$parentRT>rt-60 & IDs_pos$parentRT<rt+60)
+    ind <- intersect(ind_mz,ind_rt)
+    
+    if (length(ind)>0) {
+      identified <- c(identified,i)
+      temp <-IDs_pos[ind,]
+      allinfo <- rbind(allinfo, temp[order(temp$FragmenterScore,decreasing=TRUE)[1:3],])
+    }
+  } else {
+    ind_mz <- which(IDs_neg$parentMZ>mz-ppmCal(mz,10) & IDs_neg$parentMZ<mz+ppmCal(mz,10))
+    ind_rt <- which(IDs_neg$parentRT>rt-60 & IDs_neg$parentRT<rt+60)
+    ind <- intersect(ind_mz,ind_rt)
+    
+    if (length(ind)>0) {
+      identified <- c(identified,i)
+      temp <-IDs_neg[ind,]
+      allinfo <- rbind(allinfo, temp[order(temp$FragmenterScore,decreasing=TRUE)[1:3],])
+    }
+  }
+}
+
+metabolites <- metabolites[identified,]
 
 # correct for age
 ind <- which(crp$Type=="SPMS")
@@ -18,9 +86,9 @@ names(metabolites_corr)<-names(metabolites)
 row.names(metabolites_corr)<-row.names(metabolites)
 metabolites_corr$Type <- metabolites$Type
 n <- 0
-for (i in 2:607)  {
+for (i in 2:ncol(metabolites))  {
   c <- cor.test(metabolites[-ind,i], crp$Age[-ind], na.action = "na.omit")
-  if (c$p.value<0.05) { # check if the corr is significant
+  if (c$p.value < 0.05) { # check if the corr is significant
     n <- n + 1
     model <- lm(metabolites[-ind,i] ~ crp$Age[-ind], na.action = "na.omit") # x = C*age
     metabolites_corr[,i] <- metabolites[,i]-model$coefficients[2]*crp$Age # x_corrected = x - C*age
@@ -45,7 +113,7 @@ for (i in 1:length(colmissing)) {
 trans <- metabolites[c("Transition.01","Transition.02","Transition.03","Transition.04"),]
 metabolites <- metabolites[!(row.names(metabolites) %in% c("Transition.01","Transition.02","Transition.03","Transition.04")),]
 
-order<-names(metabolites)
+order < -names(metabolites)
 metabolites$group <- ''
 metabolites <- metabolites[,c("group",order)]
 
@@ -63,7 +131,7 @@ for (i in 3:48)  {
   c <- cor.test(crp[-ind,i], crp$Age[-ind], na.action = "na.omit")
   if (names(crp)[i] %in% MRI) {
     crp_corr[,i] <- crp[,i]
-  } else if (c$p.value<0.05) { # check if the corr is significant
+  } else if (c$p.value < 0.05) { # check if the corr is significant
     n = c(n,i)
     model <- lm(crp[-ind,i] ~ crp$Age[-ind], na.action = "na.omit") # x = C*age
     crp_corr[,i] <- crp[,i]-model$coefficients[2]*crp$Age  # x_corrected = x - C*age
